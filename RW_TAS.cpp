@@ -25,15 +25,16 @@ using namespace std;
 struct pcb
 {
     int pc = 0; // program counter
-    bool isCritical = false;
+    bool isCritical = false; // flag to check if the program is in critical section
+    string id; // process id assigned by function name
 };
 
 // initialize control blocks objects
-struct pcb rpcb1;
-struct pcb rpcb2;
-struct pcb rpcb3;
-struct pcb wpcb1;
-struct pcb wpcb2;
+struct pcb rpcb1 = {0, false, "R1"}; // reader 1 process control block
+struct pcb rpcb2 = {0, false, "R2"}; // reader 2 process control block
+struct pcb rpcb3 = {0, false, "R3"}; // reader 3 process control block
+struct pcb wpcb1 = {0, false, "W1"}; // writer 1 process control block
+struct pcb wpcb2 = {0, false, "W2"}; // writer 2 process control block
 
 int rCounter = 0; // counter for readers
 int wCounter = 0; // counter for writers
@@ -43,22 +44,23 @@ char buffer[25]; // buffer to store data
 bool rwlock = false; // target flag
 bool lock = false;   // target flag
 
-
-
 // implement boolean test and set function
-bool test_and_set(bool &target) {
-	bool rv = target;
-	target = true;
-	return rv;
+bool test_and_set(bool &target)
+{
+    bool rv = target;
+    target = true;
+    return rv;
 }
 
 // implement test and set waiting fucntion
-void TAS_wait(bool &target) {
-	while (test_and_set(target));
+void TAS_wait(bool &target)
+{
+    while (test_and_set(target))
+        ; // spin until lock is available (false)
 }
 
 // implement test and set signal function
-void TAS_signal(bool &target) { target = false; }
+void TAS_signal(bool &target) { target = false; } // release lock (false)
 
 // implement panic function
 void panic(string msg)
@@ -68,7 +70,7 @@ void panic(string msg)
 }
 
 // implement iscritical function
-bool isCritical(struct pcb *pcb)
+bool isCritical(struct pcb *pcb) // check if the program is in critical section
 {
     if (pcb->isCritical == true)
     {
@@ -79,67 +81,43 @@ bool isCritical(struct pcb *pcb)
         return false;
     }
 }
+
+// implement report process function
+void reportProcess(struct pcb *pcb)
+{
+    if (isCritical(pcb)) // check if the program is in critical section
+    {
+        cout << "Process " << pcb->id << " is in case: " << pcb->pc << endl;
+        cout << "Process " << pcb->id << " is in critical section " << isCritical(pcb) << endl;
+    }
+}
+
 // check if the program is in critical section
 void checkCritical(int &rcount, int &wCount)
 {
     string msg = "!!!PANIC!!!";
 
-    if (rcount > 3 || wCount > 1)
-        cout << "Readers in CS = " << rcount << " && Writers in CS = " << wCount << endl;
-
-    // check if 2 or more functions are in critical section
-    if (isCritical(&wpcb1) && isCritical(&wpcb2))
+    // check if more than 2 reader and 1 writer are in critical section
+    if (rcount > 3 && wCount > 1)
     {
         panic(msg);
-        cout << "Error @ W1 && W2" << endl;
+        reportProcess(&rpcb1);
+        reportProcess(&rpcb2);
+        reportProcess(&rpcb3);
+        reportProcess(&wpcb1);
+        reportProcess(&wpcb2);
     }
-    // check if any writer is in critical section and any reader is in critical
-    // section
-    else if (isCritical(&wpcb1) && isCritical(&rpcb1))
+    // check if more than 1 writer are in critical section
+    else if (wCount > 1)
     {
         panic(msg);
-        cout << "Error @ W1 && R1" << endl;
+        reportProcess(&rpcb1);
+        reportProcess(&rpcb2);
+        reportProcess(&rpcb3);
+        reportProcess(&wpcb1);
+        reportProcess(&wpcb2);
     }
-    // check if any writer is in critical section and any reader is in critical
-    // section&
-    else if (isCritical(&wpcb1) && isCritical(&rpcb2))
-    {
-        panic(msg);
-        cout << "Error @ W1 && R2 " << endl;
-    } // check if any writer is in critical section and any reader is in critical
-      // section
-    else if (isCritical(&wpcb1) && isCritical(&rpcb3))
-    {
-        panic(msg);
-        cout << "Error @ W1 && R3" << endl;
-    } // check if any writer is in critical section and any reader is in critical
-      // section
-    else if (isCritical(&wpcb2) && isCritical(&rpcb1))
-    {
-        panic(msg);
-        cout << "Error @ W2 && R1" << endl;
-    } // check if any writer is in critical section and any reader is in critical
-      // section
-    else if (isCritical(&wpcb2) && isCritical(&rpcb2))
-    {
-        panic(msg);
-        cout << "Error @ W2 && R2" << endl;
-    } // check if any writer is in critical section and any reader is in critical
-      // section
-    else if (isCritical(&wpcb2) && isCritical(&rpcb3))
-    {
-        panic(msg);
-        cout << "Error @ W2 && R3" << endl;
-    } // check if any writer is in critical section and any reader is in critical
-      // section
-    else if (isCritical(&rpcb1) && isCritical(&rpcb2) && isCritical(&rpcb3))
-    {
-        panic(msg);
-        cout << "Error @ R1 && R2 && R3" << endl;
-    } // check if any writer is in critical section and any reader is in critical
-      // section
 }
-
 
 // writer 1
 void w1(struct pcb *pcb)
@@ -148,20 +126,24 @@ void w1(struct pcb *pcb)
     {
     case 0:
         TAS_wait(rwlock);
+        cout << pcb->id << " is entering critical section \n";
         pcb->pc++;
         break;
 
     case 1: // critical section case
+        wCounter++;
         pcb->isCritical = true;
         checkCritical(rCounter, wCounter);
         buffer[rand() % 25] = 'A' + rand() % 26;
-        cout << "Writer 1 inside critical section \n";
+        cout << pcb->id << " is inside critical section \n";
+        wCounter--;
         pcb->isCritical = false;
         pcb->pc++;
         break;
 
     case 2:
         TAS_signal(rwlock);
+        cout << pcb->id << " is existing critical section \n";
         pcb->pc = 0;
         break;
     }
@@ -174,20 +156,24 @@ void w2(struct pcb *pcb)
 
     case 0:
         TAS_wait(rwlock);
+        cout << pcb->id << " is entering critical section \n";
         pcb->pc++;
         break;
 
     case 1: // critical section case
+        wCounter++;
         pcb->isCritical = true;
         checkCritical(rCounter, wCounter);
         buffer[rand() % 25] = 'A' + rand() % 26;
-        cout << "Writer 2 inside critical section \n";
+        cout << pcb->id << " is inside critical section \n";
+        wCounter--;
         pcb->isCritical = false;
         pcb->pc++;
         break;
 
     case 2:
         TAS_signal(rwlock);
+        cout << pcb->id << " is existing critical section \n";
         pcb->pc = 0;
         break;
     }
@@ -201,6 +187,7 @@ void r1(struct pcb *pcb)
     case 0:
         TAS_wait(lock);
         rCounter++;
+        cout << pcb->id << " is entering critical section \n";
         pcb->pc++;
         break;
 
@@ -218,7 +205,7 @@ void r1(struct pcb *pcb)
     case 3: // critical case
         pcb->isCritical = true;
         checkCritical(rCounter, wCounter);
-        cout << "Reader 1 inside critical section \n";
+        cout << pcb->id << " is inside critical section \n";
         pcb->isCritical = false;
         pcb->pc++;
         break;
@@ -226,6 +213,7 @@ void r1(struct pcb *pcb)
     case 4:
         TAS_wait(lock);
         rCounter--;
+        cout << pcb->id << " is leaving critical section \n";
         pcb->pc++;
         break;
 
@@ -237,6 +225,7 @@ void r1(struct pcb *pcb)
 
     case 6:
         TAS_signal(lock);
+        cout << pcb->id << " is existing critical section \n";
         pcb->pc = 0;
         break;
     }
@@ -249,6 +238,7 @@ void r2(struct pcb *pcb)
     case 0:
         TAS_wait(lock);
         rCounter++;
+        cout << pcb->id << " is entering critical section \n";
         pcb->pc++;
         break;
 
@@ -266,14 +256,15 @@ void r2(struct pcb *pcb)
     case 3: // critical section case
         pcb->isCritical = true;
         checkCritical(rCounter, wCounter);
-        cout << "Reader 2 inside critical section \n";
+        cout << pcb->id << " is inside critical section \n";
         pcb->isCritical = false;
         pcb->pc++;
         break;
 
-    case 4:
+    case 4: // cout "reader is leaving crtical section"
         TAS_wait(lock);
         rCounter--;
+        cout << pcb->id << " is leaving critical section \n";
         pcb->pc++;
         break;
 
@@ -283,8 +274,9 @@ void r2(struct pcb *pcb)
         pcb->pc++;
         break;
 
-    case 6:
+    case 6: // cout "reader exist crtitical section"
         TAS_signal(lock);
+        cout << pcb->id << " is existing critical section \n";
         pcb->pc = 0;
         break;
     }
@@ -297,6 +289,7 @@ void r3(struct pcb *pcb)
     case 0:
         TAS_wait(lock);
         rCounter++;
+        cout << pcb->id << " is entering critical section \n";
         pcb->pc++;
         break;
 
@@ -314,7 +307,7 @@ void r3(struct pcb *pcb)
     case 3: // critical section case
         pcb->isCritical = true;
         checkCritical(rCounter, wCounter);
-        cout << "Reader 3 inside critical section \n";
+        cout << pcb->id << " is inside critical section \n";
         pcb->isCritical = false;
         pcb->pc++;
         break;
@@ -322,6 +315,7 @@ void r3(struct pcb *pcb)
     case 4:
         TAS_wait(lock);
         rCounter--;
+        cout << pcb->id << " is leaving critical section \n";
         pcb->pc++;
         break;
     case 5:
@@ -331,6 +325,7 @@ void r3(struct pcb *pcb)
         break;
     case 6:
         TAS_signal(lock);
+        cout << pcb->id << " is existing critical section \n";
         pcb->pc = 0;
         break;
     }
@@ -344,7 +339,7 @@ int main()
     {
         buffer[i] = '.';
     }
-    
+
     // for (;true;)
     for (int x = 0; x < 100; x++)
     {
@@ -369,4 +364,4 @@ int main()
             break;
         }
     }
-} 
+}
